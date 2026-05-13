@@ -66,3 +66,28 @@ class UserAccount(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f"{self.email} ({self.user_type})"
+
+
+class Contribution(models.Model):
+    """A verified M-Pesa contribution submitted by a user.
+
+    `txn_code` is the Safaricom transaction code (e.g. UEDQD3VQX9) and is
+    globally unique — the same code can never be submitted twice.
+    """
+
+    user = models.ForeignKey(
+        UserAccount,
+        on_delete=models.CASCADE,
+        related_name="contributions",
+    )
+    txn_code = models.CharField(max_length=32, unique=True, db_index=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    paid_at = models.DateTimeField()
+    raw_message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-paid_at", "-created_at"]
+
+    def __str__(self):
+        return f"{self.txn_code} - {self.amount} ({self.user.email})"

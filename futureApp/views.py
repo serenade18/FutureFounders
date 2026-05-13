@@ -10,9 +10,14 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from futureApp.models import UserAccount
+from django.db import IntegrityError
+from futureApp.models import UserAccount, Contribution
 from futureApp.permissions import IsAdminRole
-from futureApp.serializers import UserSerializer, UserCreateSerializer
+from futureApp.serializers import (
+    UserSerializer,
+    UserCreateSerializer,
+    ContributionSerializer,
+)
 
 
 # =============================================================================
@@ -263,5 +268,71 @@ class UserViewSet(viewsets.ViewSet):
             raise PermissionDenied("You can only delete your own account.")
 
         user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# =============================================================================
+# Contribution ViewSet
+# =============================================================================
+
+class ContributionViewSet(viewsets.ViewSet):
+    """List and create M-Pesa contributions for the authenticated user.
+
+    Duplicate `txn_code` submissions return HTTP 409 with a clear message.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        qs = Contribution.objects.all()
+        if not request.user.is_staff:
+            qs = qs.filter(user=request.user)
+        serializer = ContributionSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def create(self, request):
+        data = request.data.copy()
+        txn_code = (data.get("txn_code") or "").strip().upper()
+        if not txn_code:
+            return Response(
+                {"error": "Transaction code is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if Contribution.objects.filter(txn_code=txn_code).exists():
+            return Response(
+                {"error": f"Transaction {txn_code} has already been submitted."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        data["txn_code"] = txn_code
+        serializer = ContributionSerializer(data=data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            instance = serializer.save(user=request.user)
+        except IntegrityError:
+            return Response(
+                {"error": f"Transaction {txn_code} has already been submitted."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        return Response(
+            ContributionSerializer(instance).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def retrieve(self, request, pk=None):
+        contribution = get_object_or_404(Contribution, pk=pk)
+        if not request.user.is_staff and contribution.user_id != request.user.id:
+            raise PermissionDenied("You can only view your own contributions.")
+        return Response(ContributionSerializer(contribution).data)
+
+    def destroy(self, request, pk=None):
+        contribution = get_object_or_404(Contribution, pk=pk)
+        if not request.user.is_staff and contribution.user_id != request.user.id:
+            raise PermissionDenied("You can only delete your own contributions.")
+        contribution.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

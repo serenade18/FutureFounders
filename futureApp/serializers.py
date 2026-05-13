@@ -8,6 +8,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 User = get_user_model()
 
+from futureApp.models import Contribution
+
 # ============== User Serializers ==============
 
 class CustomTokenObtainPairSerializer(serializers.Serializer):
@@ -101,3 +103,24 @@ class UserAccountSerializer(serializers.ModelSerializer):
             'user_type',
             'added_on'
         ]
+
+# ============== contribution Serializers ==============
+
+class ContributionSerializer(serializers.ModelSerializer):
+    user_email = serializers.CharField(source="user.email", read_only=True)
+    user_name = serializers.CharField(source="user.name", read_only=True)
+
+    class Meta:
+        model = Contribution
+        fields = [
+            "id",
+            "user",
+            "user_email",
+            "user_name",
+            "txn_code",
+            "amount",
+            "paid_at",
+            "raw_message",
+            "created_at",
+        ]
+        read_only_fields = ["id", "user", "user_email", "user_name", "created_at"]

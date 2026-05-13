@@ -13,12 +13,14 @@ from futureApp.views import (
     ChangePasswordView,
     PasswordResetRequestView,
     PasswordResetConfirmView,
+    ContributionViewSet,
 )
 from futureProject import settings
 
 # Create router and register viewSets
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
+router.register(r'contributions', ContributionViewSet, basename='contribution')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
