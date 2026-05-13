@@ -1,4 +1,8 @@
+import secrets
+from datetime import timedelta
+
 from django.contrib.auth.hashers import make_password
+from django.utils import timezone
 from django.shortcuts import render, get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.exceptions import ValidationError, PermissionDenied
@@ -77,6 +81,95 @@ class ChangePasswordView(APIView):
         user.save()
 
         return Response({"message": "Password updated successfully"}, status=status.HTTP_200_OK)
+
+
+class PasswordResetRequestView(APIView):
+    """Issue a one-time reset token for the given email.
+
+    No email service is configured, so the token is returned in the response
+    body for the client to use directly. In production you would mail it
+    instead of returning it.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = (request.data.get("email") or "").strip().lower()
+        if not email:
+            return Response(
+                {"error": "Email is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        generic_ok = {
+            "message": "If that email exists, a reset link has been issued.",
+        }
+
+        try:
+            user = UserAccount.objects.get(email=email)
+        except UserAccount.DoesNotExist:
+            # Don't leak whether the email is registered.
+            return Response(generic_ok, status=status.HTTP_200_OK)
+
+        token = secrets.token_urlsafe(32)
+        user.reset_token = token
+        user.reset_token_expires = timezone.now() + timedelta(minutes=30)
+        user.save(update_fields=["reset_token", "reset_token_expires"])
+
+        # Demo-only: return the token so the frontend can complete the flow
+        # without an email service.
+        payload = dict(generic_ok)
+        payload["token"] = token
+        payload["email"] = user.email
+        return Response(payload, status=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = (request.data.get("email") or "").strip().lower()
+        token = request.data.get("token")
+        new_password = request.data.get("new_password")
+
+        if not email or not token or not new_password:
+            return Response(
+                {"error": "email, token and new_password are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(new_password) < 6:
+            return Response(
+                {"error": "Password must be at least 6 characters"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = UserAccount.objects.get(email=email)
+        except UserAccount.DoesNotExist:
+            return Response(
+                {"error": "Invalid or expired reset token"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if (
+            not user.reset_token
+            or not secrets.compare_digest(user.reset_token, token)
+            or not user.reset_token_expires
+            or user.reset_token_expires < timezone.now()
+        ):
+            return Response(
+                {"error": "Invalid or expired reset token"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(new_password)
+        user.reset_token = None
+        user.reset_token_expires = None
+        user.save()
+
+        return Response(
+            {"message": "Password reset successfully"},
+            status=status.HTTP_200_OK,
+        )
 
 
 class UserViewSet(viewsets.ViewSet):

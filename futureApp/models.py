@@ -55,6 +55,10 @@ class UserAccount(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     added_on = models.DateTimeField(auto_now_add=True)
 
+    # Password reset (token-based, no email service required)
+    reset_token = models.CharField(max_length=128, blank=True, null=True)
+    reset_token_expires = models.DateTimeField(blank=True, null=True)
+
     objects = UserAccountManager()
 
     USERNAME_FIELD = "email"
