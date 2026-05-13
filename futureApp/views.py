@@ -284,9 +284,9 @@ class ContributionViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
+        # Every authenticated member can see all contributions in the group
+        # so the dashboard can show the total collected and per-member tallies.
         qs = Contribution.objects.all()
-        if not request.user.is_staff:
-            qs = qs.filter(user=request.user)
         serializer = ContributionSerializer(qs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
